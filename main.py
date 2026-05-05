@@ -1,72 +1,120 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-from mock_model import call_maternal_health_model
+
+from Maternal_Health_Model.src.model_logic.gdm_predict import predict_gdm
+from Maternal_Health_Model.src.model_logic.anemia_predict import predict_anemia
 
 app = FastAPI()
 
-# Combined Input Model (GDM + Anemia) with validation
+
+
 class MaternalHealthInput(BaseModel):
-    # GDM Inputs
-    age: int = Field(gt=0, le=100)  # Age must be positive and realistic
-    gravida: int = Field(ge=1)  # Gravida at least 1
-    gest_weeks: int = Field(ge=1, le=42)  # Gestational weeks realistic
-    prev_gdm: bool  # Changed to bool for yes/no
+    # GDM
+    age: int = Field(gt=0, le=100)
+    gravida: int = Field(ge=1)
+    gest_weeks: int = Field(ge=1, le=42)
+    prev_gdm: bool
     family: bool
     pcod: bool
     waist: float = Field(gt=0)
     bp_sys: int = Field(gt=0)
     bp_dia: int = Field(gt=0)
-    activity: str = Field(min_length=1)
+    activity: str
     thirst: bool
     urination: bool
     hunger: bool
     dark: bool
 
-    # Anemia Inputs
+    # Anemia
     height_cm: float = Field(gt=0)
     weight_kg: float = Field(gt=0)
-    iron_intake: bool
-    diet_quality: str = Field(min_length=1)
+    iron_intake: str
+    diet_quality: str
     fatigue: bool
     dizziness: bool
     pale_eyelids: bool
     pale_nails: bool
-    tongue: bool
+    tongue: str
     history: bool
 
-@app.get("/")
-def read_root():
-    return {"message": "Hello, FastAPI is running!"}
 
-@app.post("/mht/")
-def submit_health_status(data: MaternalHealthInput):
+
+def prepare_gdm_input(data: MaternalHealthInput):
+    return {
+        "Age": data.age,
+        "Gravida": data.gravida,
+        "Gestational_Age_weeks": data.gest_weeks,
+        "Previous_GDM": "Yes" if data.prev_gdm else "No",
+        "Family_Diabetes": "Yes" if data.family else "No",
+        "PCOD": "Yes" if data.pcod else "No",
+        "Waist_cm": data.waist,
+        "BP_Systolic": data.bp_sys,
+        "BP_Diastolic": data.bp_dia,
+        "Physical_Activity": data.activity,
+        "Excess_Thirst": "Yes" if data.thirst else "No",
+        "Frequent_Urination": "Yes" if data.urination else "No",
+        "Excess_Hunger": "Yes" if data.hunger else "No",
+        "Dark_Skin_Patches": "Yes" if data.dark else "No",
+    }
+
+
+def prepare_anemia_input(data: MaternalHealthInput):
+    return {
+        "Height_cm": data.height_cm,
+        "Weight_kg": data.weight_kg,
+        "Iron_Intake": data.iron_intake,
+        "Diet_Quality": data.diet_quality,
+        "Fatigue": "Yes" if data.fatigue else "No",
+        "Dizziness": "Yes" if data.dizziness else "No",
+        "Pale_Eyelids": "Yes" if data.pale_eyelids else "No",
+        "Pale_Nails": "Yes" if data.pale_nails else "No",
+        "Tongue_Color": data.tongue,
+        "Anemia_History": "Yes" if data.history else "No",
+    }
+
+
+
+@app.get("/")
+def home():
+    return {"message": "Maternal Health API running 🚀"}
+
+
+
+@app.post("/gdm")
+def gdm_endpoint(data: MaternalHealthInput):
     try:
-        health_status = call_maternal_health_model(
-            age=data.age,
-            gravida=data.gravida,
-            gest_weeks=data.gest_weeks,
-            prev_gdm=data.prev_gdm,
-            family=data.family,
-            pcod=data.pcod,
-            waist=data.waist,
-            bp_sys=data.bp_sys,
-            bp_dia=data.bp_dia,
-            activity=data.activity,
-            thirst=data.thirst,
-            urination=data.urination,
-            hunger=data.hunger,
-            dark=data.dark,
-            height_cm=data.height_cm,
-            weight_kg=data.weight_kg,
-            iron_intake=data.iron_intake,
-            diet_quality=data.diet_quality,
-            fatigue=data.fatigue,
-            dizziness=data.dizziness,
-            pale_eyelids=data.pale_eyelids,
-            pale_nails=data.pale_nails,
-            tongue=data.tongue,
-            history=data.history
-        )
-        return {"health_status": health_status}
+        gdm_input = prepare_gdm_input(data)
+        result = predict_gdm(gdm_input)
+        return {"gdm_result": result}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Model error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+@app.post("/anemia")
+def anemia_endpoint(data: MaternalHealthInput):
+    try:
+        anemia_input = prepare_anemia_input(data)
+        result = predict_anemia(anemia_input)
+        return {"anemia_result": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+@app.post("/mht")
+def combined_endpoint(data: MaternalHealthInput):
+    try:
+        gdm_input = prepare_gdm_input(data)
+        anemia_input = prepare_anemia_input(data)
+
+        gdm_result = predict_gdm(gdm_input)
+        anemia_result = predict_anemia(anemia_input)
+
+        return {
+            "gdm": gdm_result,
+            "anemia": anemia_result
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
